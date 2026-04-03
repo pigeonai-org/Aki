@@ -6,7 +6,7 @@
 
 | 文档 | 模块 | 说明 | 文件数 |
 |------|------|------|--------|
-| [agent.md](agent.md) | `aki.agent` | Agent 核心系统 — 执行循环、编排器、角色、身份、通信 | 11 |
+| [agent.md](agent.md) | `aki.agent` | Agent 核心系统 — 执行循环、编排器、身份、通信 | 11 |
 | [tools.md](tools.md) | `aki.tools` | 工具系统 — 基类、并行引擎、26 个内置工具 | 26 |
 | [context.md](context.md) | `aki.context` | Context 管理 — Token 预算、压缩策略链 | 4 |
 | [hooks.md](hooks.md) | `aki.hooks` | Hook + 权限 — 事件分发、权限规则 | 4 |
@@ -39,7 +39,6 @@
 ## 架构文档
 
 - [architecture.md](../architecture.md) — 系统架构总览、模块关系图、核心数据流
-- [agent_role_policy.md](../agent_role_policy.md) — Agent 角色策略
 - [memory_architecture.md](../memory_architecture.md) — 记忆架构设计
 
 ## 文档约定

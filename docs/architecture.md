@@ -1,95 +1,126 @@
-# Aki 架构总览
+# Aki Architecture Overview
 
-## 项目定位
+## What This Is
 
-Aki 是一个通用 AI Agent 平台，支持多模型、多工具、多 Agent 协作。核心场景包括视频字幕翻译、多语言本地化、文档处理等，同时具备扩展为通用 Agent 框架的能力。
+Aki is a general-purpose AI Agent platform. Multi-model, multi-tool, multi-agent coordination. Core use cases include video subtitle translation, multilingual localization, and document processing — but the architecture is designed to extend to anything an agent can do.
 
-## 模块架构图
+## Module Tree
 
 ```
 aki/
-├── agent/                  # Agent 核心系统
-│   ├── base.py             #   UniversalAgent — 核心 Agent 循环
-│   ├── orchestrator.py     #   AgentOrchestrator — 任务调度 + 子系统注入
-│   ├── roles.py            #   Role 定义 + 技能前端加载
-│   ├── identity.py         #   AgentDefinition + AgentIdentity（持久化身份）
-│   ├── agent_registry.py   #   AgentRegistry（Agent 定义发现 + 管理）
-│   ├── state.py            #   AgentContext（执行上下文 + 深度控制）
-│   ├── logger.py           #   结构化日志（Rich Console）
-│   ├── types.py            #   类型定义
-│   └── communication/      #   Agent 间通信
-│       ├── addressing.py   #     地址解析（project:role:instance）
+├── agent/                  # Agent core
+│   ├── base.py             #   UniversalAgent — the agent loop, native tool calling
+│   ├── orchestrator.py     #   AgentOrchestrator — task dispatch + subsystem injection
+│   ├── identity.py         #   AgentDefinition + AgentIdentity (persistent identity)
+│   ├── agent_registry.py   #   AgentRegistry (agent definition discovery + management)
+│   ├── state.py            #   AgentContext (execution context + depth control)
+│   ├── task_registry.py    #   TaskRegistry (task tracking)
+│   ├── logger.py           #   Structured logging (Rich Console)
+│   └── communication/      #   Inter-agent communication
+│       ├── addressing.py   #     Address resolution
 │       ├── messages.py     #     AgentMessage + AgentEvent
-│       └── bus.py          #     AgentBus（消息路由 + 事件广播）
+│       └── bus.py          #     AgentBus (message routing + event broadcast)
 │
-├── context/                # Context 管理子系统
-│   ├── token_counter.py    #   Token 估算（tiktoken）
-│   ├── budget.py           #   TokenBudget（容量追踪）
-│   ├── strategies.py       #   压缩策略（StripMedia/SummarizeOld/Truncate）
-│   └── manager.py          #   ContextManager（预算分配 + 自动压缩）
+├── personality/            # Personality system — who I am
+│   ├── base.md             #   Non-negotiable principles (never overridden)
+│   ├── _schema.md          #   Persona definition schema
+│   ├── registry.py         #   Persona discovery + loading
+│   ├── aki/                #   Aki persona
+│   │   ├── aki.md          #     Persona definition
+│   │   ├── examples.md     #     Conversation examples (en)
+│   │   ├── examples.zh.md  #     Conversation examples (zh)
+│   │   ├── story.md        #     Backstory (en)
+│   │   └── story.zh.md     #     Backstory (zh)
+│   ├── aria/               #   Aria persona (same structure)
+│   └── persona_memory/     #   Per-persona persistent memory
+│       └── manager.py      #     Persona memory read/write
 │
-├── hooks/                  # Hook + 权限系统
-│   ├── types.py            #   EventType（12种事件）+ HookEvent + HookResult
+├── memory/                 # Memory system — how I remember
+│   ├── base.py             #   MemoryStore base class
+│   ├── manager.py          #   MemoryManager — top-level coordination
+│   ├── recall.py           #   Session-start recall pipeline
+│   ├── review.py           #   Session-end review + promotion to long-term
+│   ├── shared.py           #   SharedTaskMemory (within-task shared state)
+│   ├── migration.py        #   Legacy memory migration
+│   ├── types.py            #   Memory type definitions
+│   ├── session/            #   Session memory (Layer 1)
+│   │   ├── store.py        #     JSONL session persistence
+│   │   └── types.py        #     Session data types
+│   ├── dimensions/         #   Long-term memory dimensions (Layer 2)
+│   │   ├── base.py         #     Dimension store base class
+│   │   ├── user.py         #     User preferences + instructions
+│   │   ├── episodic.py     #     Notable events + conversation summaries
+│   │   ├── semantic.py     #     Domain knowledge + facts
+│   │   ├── persona.py      #     Persona-specific memories
+│   │   └── procedural.py   #     Workflow patterns + tool usage
+│   ├── stores/
+│   │   ├── short_term.py   #   Short-term working memory
+│   │   └── long_term.py    #   Long-term memory store
+│   └── strategies/
+│       └── sliding_window.py # Sliding window selection
+│
+├── context/                # Context management
+│   ├── token_counter.py    #   Token estimation (tiktoken)
+│   ├── budget.py           #   TokenBudget (capacity tracking)
+│   ├── strategies.py       #   Compression strategies (StripMedia/SummarizeOld/Truncate)
+│   └── manager.py          #   ContextManager (budget allocation + auto-compression)
+│
+├── hooks/                  # Hook + permission system
+│   ├── types.py            #   EventType (12 events) + HookEvent + HookResult
 │   ├── rules.py            #   PermissionMode + PermissionRule
-│   ├── engine.py           #   HookEngine（事件分发 + 优先级）
-│   └── permission.py       #   PermissionEngine（规则求值）
+│   ├── engine.py           #   HookEngine (event dispatch + priority)
+│   └── permission.py       #   PermissionEngine (rule evaluation)
 │
-├── resilience/             # 错误恢复 + Failover
-│   ├── backoff.py          #   RateLimitBackoff（指数退避 + 抖动）
+├── resilience/             # Error recovery + failover
+│   ├── backoff.py          #   RateLimitBackoff (exponential + jitter)
 │   ├── failover.py         #   ModelFailover / FailoverChain
-│   └── recovery.py         #   ErrorRecoveryHandler（错误分类 + 恢复决策）
+│   └── recovery.py         #   ErrorRecoveryHandler (classify + recover)
 │
-├── tools/                  # 工具系统
-│   ├── base.py             #   BaseTool（工具基类 + 并发安全标记）
-│   ├── executor.py         #   ToolExecutor（并行执行引擎）
-│   ├── result_store.py     #   LargeResultStore（大结果落盘）
-│   ├── registry.py         #   ToolRegistry（工具注册表）
-│   ├── delegate_to_worker.py # DelegateToWorkerTool（Agent 派遣）
+├── tools/                  # Tool system
+│   ├── base.py             #   BaseTool (tool base class + concurrency_safe flag)
+│   ├── executor.py         #   ToolExecutor (parallel execution engine)
+│   ├── result_store.py     #   LargeResultStore (large results to disk)
+│   ├── registry.py         #   ToolRegistry
+│   ├── delegate_to_worker.py # DelegateToWorkerTool (agent delegation)
 │   ├── read_skill.py       #   ReadSkillTool
 │   ├── skills_search.py    #   SkillsSearchTool
-│   ├── agent/              #   Agent 间通信工具
+│   ├── agent/              #   Inter-agent communication tools
+│   │   ├── check_task.py   #     CheckTaskTool
 │   │   ├── send_message.py #     SendAgentMessageTool
 │   │   ├── read_shared.py  #     ReadSharedStateTool
 │   │   └── write_shared.py #     WriteSharedStateTool
-│   ├── audio/              #   音频处理工具
+│   ├── audio/              #   Audio processing
 │   │   ├── extract.py      #     AudioExtractTool
 │   │   ├── vad.py          #     AudioVADTool
 │   │   └── transcribe.py   #     TranscribeTool
-│   ├── io/                 #   文件 I/O 工具
+│   ├── io/                 #   File I/O
 │   │   ├── file.py         #     FileRead/Write/ListTool
 │   │   ├── pdf.py          #     PDFReadTool
 │   │   ├── srt.py          #     SRTRead/WriteTool
 │   │   └── web.py          #     TavilySearchTool + WebPageReadTool
-│   ├── memory/             #   记忆管理工具
+│   ├── memory/             #   Memory management tools
 │   │   ├── index.py        #     get_memory_index()
 │   │   └── memory.py       #     MemoryList/Read/WriteTool
-│   ├── personality/        #   人格管理工具
+│   ├── personality/        #   Personality tools
 │   │   └── personality.py  #     PersonalityList/SelectTool
-│   ├── subtitle/           #   字幕处理工具
+│   ├── pipeline/           #   Deterministic pipeline tools
+│   │   ├── _helpers.py     #     Pipeline utilities
+│   │   ├── localize.py     #     LocalizePipelineTool
+│   │   ├── media_extract.py #    MediaExtractPipelineTool
+│   │   └── qa_edit.py      #     QAEditPipelineTool
+│   ├── subtitle/           #   Subtitle processing
 │   │   ├── editor.py       #     SubtitleEditTool
 │   │   ├── proofreader.py  #     SubtitleProofreadTool
 │   │   └── translator.py   #     SubtitleTranslateTool
-│   ├── text/               #   文本处理工具
+│   ├── text/               #   Text processing
 │   │   └── translate.py    #     TranslateTool + ProofreadTool
-│   └── vision/             #   视觉处理工具
+│   └── vision/             #   Vision processing
 │       ├── analyze.py      #     VisionAnalyzeTool
 │       └── video.py        #     VideoFrameExtractTool
 │
-├── memory/                 # 记忆系统
-│   ├── base.py             #   MemoryStore 抽象基类
-│   ├── manager.py          #   MemoryManager
-│   ├── shared.py           #   SharedTaskMemory（任务内共享状态）
-│   ├── migration.py        #   记忆迁移工具
-│   ├── types.py            #   记忆类型定义
-│   ├── stores/
-│   │   ├── short_term.py   #   短期记忆存储
-│   │   └── long_term.py    #   长期记忆存储（.md 文件）
-│   └── strategies/
-│       └── sliding_window.py # 滑动窗口选择策略
-│
-├── models/                 # 模型适配层
-│   ├── base.py             #   模型基类
-│   ├── config.py           #   模型配置
+├── models/                 # Model adapter layer
+│   ├── base.py             #   Model base class
+│   ├── config.py           #   Model configuration
 │   ├── registry.py         #   ModelRegistry
 │   ├── types/
 │   │   ├── llm.py          #   LLMInterface + LLMResponse + ToolCall
@@ -97,100 +128,107 @@ aki/
 │   │   ├── audio.py        #   AudioInterface
 │   │   └── embedding.py    #   EmbeddingInterface
 │   └── providers/
-│       ├── openai.py       #   OpenAI 适配器
-│       ├── anthropic.py    #   Anthropic 适配器
-│       ├── google.py       #   Google Gemini 适配器
-│       └── qwen.py         #   通义千问 / DashScope 适配器
+│       ├── openai.py       #   OpenAI adapter
+│       ├── anthropic.py    #   Anthropic adapter
+│       ├── google.py       #   Google Gemini adapter
+│       └── qwen.py         #   Qwen / DashScope adapter
 │
-├── config/                 # 全局配置
-│   └── settings.py         #   Settings（Pydantic Settings，环境变量）
+├── config/                 # Global configuration
+│   └── settings.py         #   Settings (Pydantic Settings, env vars)
 │
 ├── api/                    # REST API
-│   ├── models.py           #   请求/响应模型
-│   ├── routes.py           #   FastAPI 路由
-│   ├── server.py           #   服务器启动
-│   └── session_manager.py  #   会话管理
+│   ├── models.py           #   Request/response models
+│   ├── routes.py           #   FastAPI routes
+│   ├── server.py           #   Server startup
+│   └── session_manager.py  #   Session management
 │
-├── gateway/                # 多平台网关
-│   ├── gateway.py          #   Gateway 核心
-│   ├── compaction.py       #   会话压缩
-│   ├── lane_queue.py       #   消息队列
-│   ├── persistence.py      #   会话持久化
-│   ├── types.py            #   网关类型
+├── gateway/                # Multi-platform gateway
+│   ├── gateway.py          #   Gateway core
+│   ├── compaction.py       #   Session compaction
+│   ├── lane_queue.py       #   Message queue
+│   ├── persistence.py      #   Session persistence
+│   ├── types.py            #   Gateway types
 │   └── adapters/
-│       ├── base.py         #   适配器基类
-│       └── discord_adapter.py # Discord 适配器
+│       ├── base.py         #   Adapter base class
+│       └── discord_adapter.py # Discord adapter
 │
-├── mcp/                    # MCP 协议支持
-│   ├── config.py           #   MCP 配置
+├── mcp/                    # MCP protocol support
+│   ├── config.py           #   MCP configuration
 │   ├── client/
-│   │   ├── client.py       #   MCP 客户端
-│   │   ├── adapter.py      #   MCP→Tool 适配
-│   │   └── manager.py      #   多服务器管理
+│   │   ├── client.py       #   MCP client
+│   │   ├── adapter.py      #   MCP -> Tool adapter
+│   │   └── manager.py      #   Multi-server management
 │   └── server/
-│       ├── server.py       #   MCP 服务端
-│       └── adapter.py      #   Tool→MCP 适配
+│       ├── server.py       #   MCP server
+│       └── adapter.py      #   Tool -> MCP adapter
 │
-├── cli/                    # 命令行界面
-│   └── main.py             #   Typer CLI
+├── cli/                    # Command line interface
+│   ├── main.py             #   Typer CLI
+│   ├── events.py           #   CLI event handling
+│   ├── focus.py            #   Focus mode
+│   ├── input.py            #   Input handling
+│   └── renderer.py         #   Output rendering
 │
-├── skills/                 # 技能系统
-│   └── registry.py         #   技能注册表 + frontmatter 加载
+├── skills/                 # Skill system
+│   └── registry.py         #   Skill registry + frontmatter loading
 │
-└── runtime/                # 运行时
-    └── dependencies.py     #   依赖注入
+└── runtime/                # Runtime
+    └── dependencies.py     #   Dependency injection
 ```
 
-## 核心数据流
+## Core Data Flow
 
 ```
-用户消息
-    ↓
+User message
+    |
 AgentOrchestrator.run_task(task)
-    ↓ 创建 AgentContext, AgentBus, SharedTaskMemory
-    ↓ 注入 ContextManager, ErrorRecoveryHandler, HookEngine, PermissionEngine
-    ↓
+    | creates AgentContext, AgentBus, SharedTaskMemory
+    | injects ContextManager, ErrorRecoveryHandler, HookEngine, PermissionEngine
+    | runs recall pipeline (memory/recall.py) — injects personality + memories
+    |
 UniversalAgent.run(task)
-    ↓
-ContextManager.allocate_budget()          ← 计算 token 预算
-    ↓
-┌─→ HookEngine.fire(SESSION_START)
-│       ↓
-│   LLM.chat(messages, tools)             ← 自动 failover（ModelFailover）
-│       ↓
-│   ErrorRecoveryHandler                  ← 异常时：compact / backoff / failover / abort
-│       ↓
-│   [无 tool_calls? → SESSION_END → 返回结果]
-│       ↓
-│   HookEngine.fire(PRE_TOOL_USE)
-│       ↓
-│   PermissionEngine.check_permission()   ← 规则匹配（allow/deny/ask）
-│       ↓  [denied → 注入拒绝消息]
-│   ToolExecutor.execute_batch(calls)
-│       ├── concurrency_safe 工具 → asyncio.gather()
-│       └── 非安全工具 → 串行执行
-│       ↓
-│   LargeResultStore.store_if_large()     ← 大结果落盘
-│       ↓
-│   HookEngine.fire(POST_TOOL_USE)
-│       ↓
-│   ContextManager.needs_compaction()?    ← 超阈值则压缩
-│       ↓  [是 → CONTEXT_COMPACTION → compact()]
-│       ↓
-│   TokenBudget.has_capacity()?           ← 预算耗尽则停止
-│       ↓
-└───────┘ (循环直到完成或预算用尽)
-    ↓
-SharedTaskMemory.clear_task()             ← 清理任务共享状态
+    |
+ContextManager.allocate_budget()          <- compute token budget
+    |
++-> HookEngine.fire(SESSION_START)
+|       |
+|   LLM.chat(messages, tools)             <- native tool calling, auto failover
+|       |
+|   ErrorRecoveryHandler                  <- on error: compact / backoff / failover / abort
+|       |
+|   [no tool_calls? -> SESSION_END -> return result]
+|       |
+|   HookEngine.fire(PRE_TOOL_USE)
+|       |
+|   PermissionEngine.check_permission()   <- rule matching (allow/deny/ask)
+|       |  [denied -> inject denial message]
+|   ToolExecutor.execute_batch(calls)
+|       |-- concurrency_safe tools -> asyncio.gather()
+|       |-- non-safe tools -> sequential
+|       |
+|   LargeResultStore.store_if_large()     <- large results to disk
+|       |
+|   HookEngine.fire(POST_TOOL_USE)
+|       |
+|   ContextManager.needs_compaction()?    <- over threshold -> compress
+|       |  [yes -> CONTEXT_COMPACTION -> compact()]
+|       |
+|   TokenBudget.has_capacity()?           <- budget exhausted -> stop
+|       |
++-------+ (loop until done or budget exhausted)
+    |
+review pass (memory/review.py)            <- promote session memories to long-term
+SharedTaskMemory.clear_task()             <- clean up task shared state
 ```
 
-## 设计原则
+## Design Principles
 
-| 原则 | 说明 |
-|------|------|
-| **渐进式采用** | 所有新子系统都是可选构造参数，未配置时为 no-op |
-| **零回归风险** | 每个 Phase 可独立部署，现有功能不受影响 |
-| **透明代理** | ModelFailover IS-A LLMInterface，对调用方透明 |
-| **安全默认** | concurrency_safe 默认 False，逐个 opt-in |
-| **向后兼容** | AgentDefinition 是 Role 的超集，通过桥接方法迁移 |
-| **策略可组合** | Context 压缩策略链式执行，StripMedia + SummarizeOld 可组合 |
+| Principle | Description |
+|-----------|-------------|
+| **Personality-driven** | Identity comes from personality layers, not role enums or agent subclasses |
+| **Progressive adoption** | All subsystems are optional constructor params; no-op when unconfigured |
+| **Zero regression risk** | Each phase deploys independently; existing functionality unaffected |
+| **Transparent proxy** | ModelFailover IS-A LLMInterface, transparent to callers |
+| **Safe defaults** | concurrency_safe defaults False; opt-in per tool |
+| **Composable strategies** | Context compression chains: StripMedia + SummarizeOld composable |
+| **Native tool calling** | The model decides tool use; no ReAct string parsing |

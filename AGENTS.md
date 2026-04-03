@@ -5,12 +5,12 @@
 - Agent orchestration: `aki/agent/`
 - Execution tools (audio/subtitle/vision/io): `aki/tools/`
 - Model providers and typed interfaces: `aki/models/`
-- Playbooks: `aki/playbook/`
+- Personality system: `aki/personality/`
 - Runtime entrypoints: `aki/cli/`, `aki/mcp/`
 - Tests: `tests/` (pytest + async tests)
 - Docs and examples: `docs/`
 - Runtime artifacts: `outputs/` (generated files; do not treat as source)
-- Personality system: `aki/tools/personality/`
+- Personality tools: `aki/tools/personality/`
 
 ## Build, Test, and Development Commands
 - `uv sync` — install project dependencies.

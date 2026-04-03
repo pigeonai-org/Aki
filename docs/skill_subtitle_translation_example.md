@@ -2,82 +2,90 @@
 
 ## What Is a Skill?
 
-A skill is an Anthropic-compliant Markdown blueprint that strictly dictates the behavior of the `UniversalAgent`.
+A skill is a Markdown file that tells me how to do something. It describes a workflow — the phases, the order, the constraints, the quality expectations. No Python, no class definitions. Just instructions I can read and follow.
 
-It tells the Orchestrator:
-1. The description and logic bounds of the workflow.
+Skills live in `aki/skills/<skill-name>/Skill.md` (or `SKILL.md`). The orchestrator discovers them at runtime via `skills_search`, reads the body with `read_skill`, and uses the instructions to plan execution.
+
+A skill tells the orchestrator:
+1. What the workflow does and when it applies.
 2. The sequence of sub-tasks to delegate.
 3. The expected parameters and rules.
-4. Practical constraints required to hit the quality thresholds.
+4. Quality constraints and output contracts.
 
-In Aki, skills are defined in human-readable markdown (`aki/skills/<skill_name>/Skill.md` or `aki/skills/<skill_name>/SKILL.md`) and injected into the Orchestrator's execution plan.
+## Example: Subtitle Translation
 
-## Example: Subtitle Translation Skill
-
-Task type: `subtitle_translation`  
+Task type: `subtitle_translation`
 Skill definition: `aki/skills/subtitle-translation/SKILL.md`
-Role contract skill: `aki/skills/agent-creation/Skill.md`
 
-### Agent Role Contract
-
-Before delegation, the Orchestrator loads `agent-creation` via `read_skill`.
-
-The runtime role definitions (`Orchestrator`, `MediaExtractor`, `Localizer`, `QAEditor`) are sourced from the `roles` YAML frontmatter block in:
-
-- `aki/skills/agent-creation/Skill.md`
-
-Runtime models that consume these blueprints live in:
-
-- `aki/agent/roles.py`
-
-### Intended Workflow mapped to Roles
+### The Workflow
 
 1. **Extraction Phase**
-   - Delegated to Role: `MediaExtractor`
-   - Goal: Extract audio, run VAD, and transcribe every chunk sequentially with preserved timing metadata.
-   - Required order: `audio_extract -> audio_vad -> transcribe`
-   - Output contract: complete transcription payload with `segments` (`index/start_time/end_time/text`), `language`, `duration`.
+   - Worker name: `MediaExtractor`
+   - Worker persona: specialist in media extraction and transcription.
+   - Goal: Extract audio, run VAD, transcribe every chunk with preserved timing metadata.
+   - Expected tool order: `audio_extract` -> `audio_vad` -> `transcribe`
+   - Output: complete transcription payload with `segments` (`index/start_time/end_time/text`), `language`, `duration`.
 
 2. **Translation Phase**
-   - Delegated to Role: `Localizer`
-   - Goal: Translate full subtitle segments from source language to target language contextually.
-   - Input normalization: fills missing `index/start_time/end_time/text` fields to prevent translation drop-offs.
-   - Context behavior: uses full transcription segments instead of single long paragraph text.
+   - Worker name: `Localizer`
+   - Worker persona: specialist in subtitle translation and localization.
+   - Goal: Translate full subtitle segments from source to target language contextually.
+   - Input normalization: fills missing `index/start_time/end_time/text` fields.
+   - Uses full transcription segments, not a single merged paragraph.
 
 3. **QA and Delivery**
-   - Delegated to Role: `QAEditor`
-   - Goal: Proofread, apply final subtitle adjustments, and write final timestamped SRT output.
-   - Input sources: `translated_subtitles` list or existing `subtitle_file_path`.
-   - Output contract: final `.srt` file path.
+   - Worker name: `QAEditor`
+   - Worker persona: specialist in subtitle proofreading and final output.
+   - Goal: Proofread, apply final adjustments, write timestamped SRT.
+   - Input: `translated_subtitles` list or existing `subtitle_file_path`.
+   - Output: final `.srt` file path.
 
-### Using the Orchestrator
+### How the Orchestrator Executes It
 
-The Orchestrator loads the workflow skill first, then reads role contracts, and then leverages `delegate_to_worker` repeatedly:
+The orchestrator reads the skill, then delegates to workers. Each worker gets a name, a persona, task instructions, and context data from the previous phase. No role lookups, no blueprint loading.
 
 ```python
-# Phase 1: load workflow skill
+# Step 1: Find and read the skill
+skills_search(query="subtitle translation")
 read_skill(skill_name="subtitle-translation")
 
-# Phase 0 inside workflow: load role contract
-read_skill(skill_name="agent-creation")
-
-# The Orchestrator does NOT do media or translation directly.
+# Step 2: Delegate extraction
 delegate_to_worker(
-    worker_role="MediaExtractor",
-    task_instruction="Extract and transcribe...",
+    worker_name="MediaExtractor",
+    worker_persona="You are a media extraction specialist.",
+    task_instruction="Extract audio, run VAD, and transcribe all segments.",
     context_data={"video_path": "example.mp4"}
+)
+
+# Step 3: Delegate translation (with extraction results as context)
+delegate_to_worker(
+    worker_name="Localizer",
+    worker_persona="You are a subtitle localization specialist.",
+    task_instruction="Translate all segments from English to Chinese.",
+    context_data={"segments": [...], "source_lang": "en", "target_lang": "zh"}
+)
+
+# Step 4: Delegate QA (with translation results as context)
+delegate_to_worker(
+    worker_name="QAEditor",
+    worker_persona="You are a subtitle QA and editing specialist.",
+    task_instruction="Proofread and write the final SRT file.",
+    context_data={"translated_subtitles": [...], "output_path": "example.srt"}
 )
 ```
 
-## Why This Skill Architecture Helps
+Workers get all tools. The orchestrator doesn't restrict what they can call — it scopes their behavior through the task instruction and persona. A `MediaExtractor` worker *could* call `subtitle_translate`, but it won't, because its instructions say to extract and transcribe.
 
-1. **Human-Readability**: Playbooks are no longer buried in programmatic classes. The logic is just Markdown.
-2. **Progressive Disclosure**: By scanning the `registry.py`, the Orchestrator only gets metadata, loading the actual `SKILL.md` body only when necessary.
-3. **Role Isolation**: The Orchestrator doesn't get flooded with tools it's not supposed to use (like translating direct texts); it must cleanly delegate to domain experts (`MediaExtractor`, `Localizer`, etc.).
+## Why This Architecture Works
 
-## Reliability Fixes Reflected by This Skill
+1. **Human-readable**: Workflows are Markdown, not code. Anyone can read and edit them.
+2. **Progressive discovery**: The orchestrator only loads skill metadata during search. The full body is read only when needed.
+3. **No tool filtering**: Workers don't need an `allowed_tools` list. Clear task instructions are better than whitelists.
+4. **Flexible delegation**: The orchestrator decides worker names and personas dynamically. Adding a new phase means updating the skill Markdown, not writing a new class.
 
-1. **No first-30-second truncation**: QA now prefers the full localized subtitle set when the passed list is partial.
-2. **No missing-`index` translation failures**: subtitle payloads are normalized before calling translation tools.
-3. **No premature completion**: Orchestrator completion is gated on successful QAEditor `.srt` output.
-4. **Timestamp continuity**: chunk-based transcription keeps segment-level timing and index continuity across merged outputs.
+## Reliability Invariants
+
+1. **No first-30-second truncation**: QA uses the full localized subtitle set, not partial results.
+2. **No missing-index failures**: Subtitle payloads are normalized before translation.
+3. **No premature completion**: Orchestrator completion is gated on the QAEditor producing a concrete `.srt` file.
+4. **Timestamp continuity**: Chunk-based transcription preserves segment-level timing and index continuity across merged outputs.

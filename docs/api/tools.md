@@ -11,7 +11,7 @@
 Tool Base Classes
 
 Tools are pure executors - they perform specific tasks without thinking or decision-making.
-This is fundamentally different from Agents, which have ReAct loops.
+This is fundamentally different from Agents, which use native tool calling loops.
 
 Tool characteristics:
 1. Deterministic: Same input produces same output
@@ -177,7 +177,7 @@ Tool for Orchestrator to delegate tasks to specialized worker agents.
 #### class `DelegateToWorkerTool(BaseTool)`
 
 ```
-Tool to spawn and run a UniversalAgent with a specialized Role.
+Tool to spawn and run a UniversalAgent with a named persona.
 
 This fulfills the pattern where the Orchestrator does not process media
 or do direct translations, but hands that off to a targeted sub-agent.

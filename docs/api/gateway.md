@@ -74,7 +74,7 @@ Central message routing hub for multi-platform agent access.
 
 **方法：**
 
-##### `def __init__(self, session_manager: SessionManager, persistence: SessionPersistence, compactor: ContextCompactor | None = None, default_role: str = 'orchestrator', default_llm: str = 'openai:gpt-4o') -> None` <small>(L36)</small>
+##### `def __init__(self, session_manager: SessionManager, persistence: SessionPersistence, compactor: ContextCompactor | None = None, default_llm: str = 'openai:gpt-4o') -> None` <small>(L36)</small>
 
 ##### `def register_adapter(self, adapter: PlatformAdapter) -> None` <small>(L57)</small>
 
@@ -183,7 +183,7 @@ Persist the in-memory index to ``sessions.json``.
 
 Return ``session_id`` for a *platform:channel_id* key, or ``None``.
 
-##### `def register_session(self, session_id: str, platform: str, channel_id: str, user_id: str, role: str = 'orchestrator', llm_config: str = 'openai:gpt-4o') -> None` <small>(L60)</small>
+##### `def register_session(self, session_id: str, platform: str, channel_id: str, user_id: str, llm_config: str = 'openai:gpt-4o') -> None` <small>(L60)</small>
 
 Create an index entry for a new session and flush to disk.
 

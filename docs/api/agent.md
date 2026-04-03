@@ -1,6 +1,6 @@
 # `aki.agent` API 文档
 
-> Agent 核心系统 — 包括 Agent 执行循环、编排器、角色定义、持久化身份、Agent 间通信
+> Agent 核心系统 — 包括 Agent 执行循环、编排器、持久化身份、Agent 间通信
 
 ---
 
@@ -11,7 +11,6 @@
 Agent Registry
 
 Discovers and manages persistent agent definitions from disk and programmatic registration.
-Falls back to skill-based Role definitions for backward compatibility.
 ---
 
 #### class `AgentRegistry`
@@ -22,7 +21,6 @@ Discovers and manages agent definitions.
 Sources (in priority order):
 1. Programmatically registered definitions (via register())
 2. Discovered from .aki/agents/<name>/agent.md files
-3. Fallback to existing Role system (via get_role() bridge)
 
 Usage::
 
@@ -95,7 +93,7 @@ Remove an agent definition and its identity.
 
 Universal Agent Core
 
-Driven by a Role configuration. Uses native tool calling — no manual ReACT loop.
+Driven by personality configuration. Uses native tool calling — no manual ReACT loop.
 The model decides when to call tools and when it's done.
 ---
 
@@ -129,7 +127,7 @@ Raised when agent count limit is exceeded.
 #### class `UniversalAgent`
 
 ```
-A unified agent class driven by a Role configuration.
+A unified agent class driven by personality configuration.
 
 Uses native tool calling: the LLM decides which tools to call and when to stop.
 No manual observe/think/act/reflect loop needed — modern models handle this natively.
@@ -137,7 +135,7 @@ No manual observe/think/act/reflect loop needed — modern models handle this na
 
 **方法：**
 
-##### `def __init__(self, role: Optional[Role] = None, context: Optional[AgentContext] = None, llm: Optional[LLMInterface] = None, memory: Optional[Any] = None, tools: Optional[list[BaseTool]] = None, user_context: Optional[dict[str, Any]] = None, context_manager: Optional[ContextManager] = None, error_handler: Optional[ErrorRecoveryHandler] = None, identity: Optional[AgentIdentity] = None, hook_engine: Optional[HookEngine] = None, permission_engine: Optional[PermissionEngine] = None)` <small>(L51)</small>
+##### `def __init__(self, agent_name: Optional[str] = None, context: Optional[AgentContext] = None, llm: Optional[LLMInterface] = None, memory: Optional[Any] = None, tools: Optional[list[BaseTool]] = None, user_context: Optional[dict[str, Any]] = None, context_manager: Optional[ContextManager] = None, error_handler: Optional[ErrorRecoveryHandler] = None, identity: Optional[AgentIdentity] = None, hook_engine: Optional[HookEngine] = None, permission_engine: Optional[PermissionEngine] = None)` <small>(L51)</small>
 
 ##### `async def run_turn(self, user_message: str, conversation_history: list[dict[str, Any]]) -> str` <small>(L100)</small>
 
@@ -441,122 +439,13 @@ Reset the global orchestrator instance (useful for testing).
 
 ---
 
-## `aki.agent.roles`
+## `aki.agent.roles` *(deprecated)*
 
 **文件路径：** `aki/agent/roles.py`
 
-Role-Based Configuration Models for UniversalAgent.
-
-Runtime role models live under `aki/agent`, while role blueprints
-(persona/system_prompt/allowed_tools) are sourced from the `agent-creation`
-skill frontmatter.
----
-
-#### class `Role(BaseModel)`
-
-```
-Base definition of an agent role.
-```
-
-**属性：**
-
-| 属性名 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `name` | `str` | `` | The internal name identifier of the role (e.g.  |
-| `persona` | `str` | `` | The persona or high-level description of who the agent is. |
-| `system_prompt` | `str` | `` | The core instruction set injected into the agent |
-| `allowed_tools` | `list[str]` | `` | List of tool names this role is allowed to access. |
-
-**方法：**
-
-##### `def from_definition(cls, defn: Any) -> 'Role'` <small>(L36)</small>
-
-Bridge an AgentDefinition into a Role for backward compatibility.
-
-Args:
-    defn: An AgentDefinition instance (or any object with name/persona/system_prompt/allowed_tools).
-
-Returns:
-    Role populated from the definition.
-
-
----
-
-#### `def get_role(role_name: str) -> Role` <small>(L100)</small>
-
-Return a role by name from skill-defined role blueprints.
-
-
----
-
-#### `def get_worker_role_names() -> list[str]` <small>(L109)</small>
-
-Return the supported worker role names.
-
-
----
-
-#### class `OrchestratorRole(Role)`
-
-```
-Orchestrator Role: High-level planner and delegator.
-```
-
-**方法：**
-
-##### `def __init__(self, **data: Any)` <small>(L121)</small>
-
-
----
-
-#### class `MediaExtractorRole(Role)`
-
-```
-Media Worker Role: Handles audio/video extraction and transcription.
-```
-
-**方法：**
-
-##### `def __init__(self, **data: Any)` <small>(L130)</small>
-
-
----
-
-#### class `LocalizerRole(Role)`
-
-```
-Localizer Worker Role: Handles translation and editing.
-```
-
-**方法：**
-
-##### `def __init__(self, **data: Any)` <small>(L139)</small>
-
-
----
-
-#### class `QAEditorRole(Role)`
-
-```
-QA Editor Worker Role: Handles proofreading and final output formatting.
-```
-
-**方法：**
-
-##### `def __init__(self, **data: Any)` <small>(L148)</small>
-
-
----
-
-#### class `GeneralistRole(Role)`
-
-```
-Generalist Worker Role: Handles open-ended text/basic IO tasks.
-```
-
-**方法：**
-
-##### `def __init__(self, **data: Any)` <small>(L157)</small>
+> **Deprecated stub.** Roles have been removed — personality now drives agent identity.
+> All agents have full tool access; there is no `allowed_tools` restriction.
+> This module is retained only for backward-compatibility imports.
 
 
 
@@ -626,7 +515,7 @@ The ReACT loop and manual action types have been removed in favour of native too
 Agent Addressing
 
 Parses and resolves pipeline-style agent addresses.
-Format: [project:]role[:instance]
+Format: [project:]agent_name[:instance]
 ---
 
 #### class `AgentAddress`
@@ -634,7 +523,7 @@ Format: [project:]role[:instance]
 ```
 Parses and resolves pipeline-style agent addresses.
 
-Address format: ``[project:]role[:instance]``
+Address format: ``[project:]agent_name[:instance]``
 
 Examples:
     - ``"Localizer"`` — matches any Localizer agent
@@ -649,14 +538,14 @@ Examples:
 
 **方法：**
 
-##### `def __init__(self, project: Optional[str], role: str, instance: Optional[str]) -> None` <small>(L26)</small>
+##### `def __init__(self, project: Optional[str], agent_name: str, instance: Optional[str]) -> None` <small>(L26)</small>
 
 ##### `def parse(cls, address: str) -> 'AgentAddress'` <small>(L32)</small>
 
 Parse an address string into components.
 
 Args:
-    address: Address string like "project:role:instance", "role:instance", or "role".
+    address: Address string like "project:agent_name:instance", "agent_name:instance", or "agent_name".
 
 Returns:
     AgentAddress with parsed components.

@@ -48,6 +48,9 @@ Memory system configuration.
 | `default_namespace` | `str` | `'default'` | Default namespace for memory partitioning |
 | `long_term_memory_dir` | `str` | `'.aki/long-term-memory'` | Directory for human-readable long-term memory .md files |
 | `memory_review_enabled` | `bool` | `True` | Run a post-turn memory review pass after each agent response |
+| `session_dir` | `str` | `'.aki/sessions'` | Directory for session persistence |
+| `memory_base_dir` | `str` | `'.aki/memory'` | Base directory for all memory stores |
+| `review_enabled` | `bool` | `True` | Enable the post-turn memory review pass |
 | `model_config` | `` | `SettingsConfigDict(env_prefix='AKI_MEMORY_')` |  |
 
 
@@ -124,7 +127,6 @@ Gateway configuration for multi-platform messaging.
 | `session_dir` | `str` | `'.aki/sessions'` | Directory for JSONL session persistence |
 | `compaction_max_tokens` | `int` | `8000` | Max estimated context tokens before compaction triggers |
 | `compaction_threshold` | `float` | `0.8` | Fraction of max_tokens that triggers compaction (0.0-1.0) |
-| `default_role` | `str` | `'orchestrator'` | Default agent role for gateway sessions |
 | `default_llm` | `str` | `'openai:gpt-4o'` | Default LLM for gateway sessions |
 | `model_config` | `` | `SettingsConfigDict(env_prefix='AKI_GATEWAY_', env_file='.env', env_file_enco` |  |
 

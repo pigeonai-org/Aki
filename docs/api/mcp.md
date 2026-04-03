@@ -63,7 +63,7 @@ Returns:
 MCP-to-BaseTool Adapter
 
 Bridges MCP tools into Aki's BaseTool system so that agents
-can call remote MCP server tools through the standard ReAct loop.
+can call remote MCP server tools through native tool calling.
 ---
 
 #### class `MCPBaseTool(BaseTool)`

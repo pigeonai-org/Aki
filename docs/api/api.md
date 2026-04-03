@@ -18,7 +18,6 @@ API request/response models for Aki HTTP server.
 | 属性名 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `user_id` | `str` | `` |  |
-| `role` | `str` | `'orchestrator'` |  |
 | `default_llm` | `str` | `'openai:gpt-4o'` |  |
 | `mcp_url` | `str | None` | `None` |  |
 | `user_context` | `dict[str, Any] | None` | `None` |  |

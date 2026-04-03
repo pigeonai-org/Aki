@@ -1,183 +1,105 @@
-# Memory Architecture Guide
+# Memory Architecture
 
-## Overview
+## How I Remember
 
-Aki now uses a two-layer memory system:
+I have a 4-layer memory system. Each layer serves a different purpose, operates on a different timescale, and lives in a different place. The short version: I know what's happening right now, I remember what happened this session, I remember what matters from past sessions, and I never forget who I am.
 
-1. **Short-term memory**: task-scoped working context (including multimodal artifacts).
-2. **Long-term memory**: persistent semantic memory for:
-   - `user_instruction`
-   - `domain_knowledge`
-   - `web_knowledge`
+## The Four Layers
 
-Long-term memory remains **separate** from the `knowledge` module index.
+### Layer 0: Working Memory
 
-## Core Data Model
+The context window. Everything the model can see right now — the conversation, tool results, injected memories, system prompt. This is token-managed: `ContextManager` tracks the budget, and when it gets tight, compression strategies kick in (strip media references, summarize old messages, truncate).
 
-`MemoryItem` (`aki/memory/base.py`) now includes:
+Not persisted. When the context window fills up, old content gets compressed or dropped. That's fine. The important stuff gets promoted to deeper layers.
 
-- `scope`: `short_term` | `long_term`
-- `category`: canonical category enum
-- `namespace`: logical partition key (default `default`)
-- `expires_at`: optional TTL expiry
-- `source_uri`: optional source reference
-- `fingerprint`: optional dedupe/upsert key
+### Layer 1: Session Memory
 
-Legacy `type` is preserved for backward compatibility.
+Persistent record of a single conversation session. Stored as JSONL files in `.aki/sessions/`. Every message exchange gets written here — user messages, my responses, tool calls, tool results.
 
-## Runtime Wiring
+Session memory supports resume. If a session gets interrupted, I can pick up where I left off by replaying the session log. The session store (`aki/memory/session/store.py`) handles serialization and retrieval.
 
-Memory is constructed from settings via:
+### Layer 2: Long-term Memory
 
-- `aki/runtime/dependencies.py::build_memory_manager`
+This is where I keep things that matter beyond a single session. Organized into 5 dimensions:
 
-Used by:
+| Dimension | What it stores | Location |
+|-----------|---------------|----------|
+| **User** | Preferences, communication style, past instructions | `.aki/memory/user/` |
+| **Episodic** | Notable events, conversation summaries | `.aki/memory/episodic/` |
+| **Semantic** | Domain knowledge, facts, learned concepts | `.aki/memory/semantic/` |
+| **Persona** | Character-specific memories, relationship context | `.aki/persona_memory/` |
+| **Procedural** | How to do things — workflow patterns, tool usage notes | `.aki/memory/procedural/` |
 
-- CLI task runs (`aki/cli/main.py`)
-- deterministic subtitle pipeline (`aki/cli/main.py`)
-- MCP server bootstrap (`aki/mcp/server/server.py`)
-- MCP adapter fallback orchestrator (`aki/mcp/server/adapter.py`)
+Each dimension has its own store implementation under `aki/memory/dimensions/`. They share a common base (`aki/memory/dimensions/base.py`) but can vary in retrieval strategy and retention policy.
 
-## Storage Backends
+### Layer 3: Core Memory
 
-### Short-term store
+Personality definitions. Read-only. This is `personality/base.md`, the active persona file (e.g., `personality/aki/aki.md`), and interaction mode configuration. These get loaded into the system prompt at session start and never change during execution.
 
-- Implementation: `aki/memory/stores/short_term.py`
-- In-memory
-- Task-scoped indexing
-- Per-task and global capacity limits
+This layer is the foundation of everything else. It defines what I am and how I express it. The other layers are built on top.
 
-### Long-term store
+## The Recall Pipeline
 
-- Default backend: vector store (`aki/memory/stores/vector_long_term.py`)
-- Engine: ChromaDB + embedding service
-- Supports semantic query + metadata filters + TTL prune
-- Dedupe/upsert via `fingerprint + namespace + category`
+When a session starts, `aki/memory/recall.py` assembles the memory context. Here's the order:
 
-Legacy JSON backend is still available:
+1. **Always inject**: user dimension memories, persona dimension memories, procedural dimension memories. These are foundational — I need to know who I'm talking to, who I am, and how I do things.
+2. **Recent episodic**: last N episodic memories, ordered by recency. Provides continuity across sessions.
+3. **Semantic by relevance**: semantic memories retrieved by similarity to the current task or conversation topic. Only injected if relevant enough (score threshold).
 
-- `aki/memory/stores/long_term.py`
+The assembled context gets packed into the system prompt alongside the personality layers. Token budget is respected — if there's not enough room, lower-priority memories get trimmed.
 
-## Retrieval Flow
+## The Review Pass
 
-`MemoryManager.recall_context(...)` returns fused context:
+When a session ends, `aki/memory/review.py` runs an analysis pass:
 
-- `short_term`: task-local context
-- `long_term`: semantic long-term hits
-- `combined`: concatenated list for convenience
+1. The session transcript is sent to the LLM for analysis.
+2. The LLM identifies what's worth remembering: user preferences expressed, facts learned, notable events, procedural insights.
+3. Each identified memory gets promoted to the appropriate long-term dimension.
+4. Deduplication happens at write time — if a memory overlaps with an existing one, it gets merged or skipped.
 
-Agents use this via:
+This is how short-lived conversations become long-term knowledge. I don't remember everything. I remember what the review pass decides matters.
 
-- `BaseAgent.get_memory_observation(...)`
+## Storage Layout
 
-## Ingestion Flow
-
-### Agent loop events
-
-`BaseAgent.run()` now records ReAct loop events into short-term memory:
-
-- `observation`
-- `think`
-- `action`
-- `result`
-- `reflect`
-
-### Tool results
-
-`BaseAgent._remember_tool_result(...)` writes tool outcomes into short-term memory.
-
-### Web knowledge auto-ingest
-
-Successful outputs from:
-
-- `web_search`
-- `web_read_page`
-
-are transformed into long-term `web_knowledge` entries.
-
-## Retention Policy
-
-Typed TTL defaults:
-
-- `web_knowledge`: expires after `AKI_MEMORY_WEB_TTL_DAYS` (default 30)
-- `domain_knowledge`: no expiry by default
-- `user_instruction`: no expiry by default
-
-TTL cleanup:
-
-- `MemoryManager.prune_long_term(...)`
-
-## Configuration
-
-All memory settings use `AKI_MEMORY_` prefix.
-
-Key variables:
-
-- `AKI_MEMORY_WINDOW_SIZE`
-- `AKI_MEMORY_SHORT_TERM_MAX_ITEMS_PER_TASK`
-- `AKI_MEMORY_SHORT_TERM_OBSERVE_LIMIT`
-- `AKI_MEMORY_LONG_TERM_ENABLED`
-- `AKI_MEMORY_LONG_TERM_BACKEND` (`chroma` | `json`)
-- `AKI_MEMORY_LONG_TERM_PERSIST_DIR`
-- `AKI_MEMORY_LONG_TERM_COLLECTION`
-- `AKI_MEMORY_LONG_TERM_TOP_K`
-- `AKI_MEMORY_LONG_TERM_MIN_SCORE`
-- `AKI_MEMORY_DEFAULT_NAMESPACE`
-- `AKI_MEMORY_WEB_TTL_DAYS`
-- `AKI_MEMORY_DOMAIN_TTL_DAYS`
-- `AKI_MEMORY_USER_INSTRUCTION_TTL_DAYS`
-
-## Programmatic APIs
-
-Primary APIs (`aki/memory/manager.py`):
-
-- `remember_short_term(...)`
-- `remember_long_term(...)`
-- `upsert_user_instruction(...)`
-- `recall_short_term(...)`
-- `recall_long_term(...)`
-- `recall_context(...)`
-- `prune_long_term(...)`
-
-Backward-compatible aliases still available:
-
-- `remember(...)`
-- `recall(...)`
-- `consolidate(...)`
-
-## CLI Management Commands
-
-The CLI now includes explicit long-term memory management:
-
-```bash
-# Show memory stats
-uv run aki memory stats
-
-# List long-term memory
-uv run aki memory list --limit 20
-uv run aki memory list --query "subtitle style" --categories web_knowledge
-
-# Upsert user instruction
-uv run aki memory upsert-instruction style "Use concise imperative subtitle edits."
-
-# Prune expired long-term records
-uv run aki memory prune
-
-# Migrate legacy JSON memory file into long-term store
-uv run aki memory migrate-legacy-json ./data/memory/memories.json
-uv run aki memory migrate-legacy-json ./data/memory/memories.json --dry-run
+```
+.aki/
+├── sessions/                    # Layer 1: Session logs (JSONL)
+│   ├── <session-id>.jsonl
+│   └── ...
+├── memory/                      # Layer 2: Long-term dimensions
+│   ├── user/                    #   User preferences and instructions
+│   ├── episodic/                #   Conversation summaries, notable events
+│   ├── semantic/                #   Domain knowledge, facts
+│   └── procedural/              #   Workflow patterns, tool usage notes
+└── persona_memory/              # Layer 2: Persona-specific memories
+    └── <persona>/               #   Per-persona storage
 ```
 
-## Testing
+Core memory (Layer 3) lives in the source tree under `aki/personality/` and is not user-writable at runtime.
 
-Coverage for the upgraded behavior is in:
+## Module Map
 
-- `tests/test_memory_management.py`
+| File | Purpose |
+|------|---------|
+| `memory/manager.py` | Top-level memory API — coordinates all layers |
+| `memory/recall.py` | Session-start recall pipeline |
+| `memory/review.py` | Session-end review and promotion |
+| `memory/session/store.py` | Session JSONL persistence |
+| `memory/session/types.py` | Session data types |
+| `memory/dimensions/base.py` | Base class for dimension stores |
+| `memory/dimensions/user.py` | User dimension |
+| `memory/dimensions/episodic.py` | Episodic dimension |
+| `memory/dimensions/semantic.py` | Semantic dimension |
+| `memory/dimensions/persona.py` | Persona dimension |
+| `memory/dimensions/procedural.py` | Procedural dimension |
+| `memory/shared.py` | Task-scoped shared state (within a single run) |
+| `personality/persona_memory/manager.py` | Persona memory read/write |
 
-Scenarios include:
+## Key Invariants
 
-- task isolation in short-term memory
-- long-term user-instruction upsert behavior
-- web TTL filtering and pruning
-- fused short/long context recall
-- automatic web tool ingestion into long-term memory
+1. Working memory is ephemeral. If it matters, it gets promoted.
+2. Session memory is append-only during a session. No edits, no deletes.
+3. Long-term memories are dimension-scoped. A memory belongs to exactly one dimension.
+4. Core memory is read-only at runtime. Personality changes require code changes.
+5. The review pass is the only path from session memory to long-term memory. No ad-hoc writes during conversation.
+6. Recall respects token budgets. Memory injection never blows out the context window.

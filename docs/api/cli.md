@@ -44,7 +44,7 @@ Run a task with the Aki agent system.
 
 ---
 
-#### `def chat(role: str = ..., llm: str = ..., mcp: str = ..., verbose: bool = ...) -> None` <small>(L793)</small>
+#### `def chat(llm: str = ..., mcp: str = ..., verbose: bool = ...) -> None` <small>(L793)</small>
 
 Start an interactive multi-turn chat session.
 
@@ -139,6 +139,8 @@ Run Aki as an MCP server (stdio transport).
 
 Check MCP SDK installation status.
 
+> **Interactive commands:** The chat session supports `/persona` (switch personality) and `/model` (switch LLM provider) slash commands.
+
 
 ---
 
@@ -159,7 +161,7 @@ Examples:
 
 #### `def main() -> None` <small>(L1328)</small>
 
-Aki - A Multi-Agent Video Subtitle Generation System.
+Aki — an agentic system with personality and autonomy.
 
 
 
