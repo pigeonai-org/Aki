@@ -1,4 +1,8 @@
-# Aki
+<p align="center">
+  <img src="assets/logo.jpg" alt="Aki" width="280" />
+</p>
+
+<h1 align="center">Aki</h1>
 
 Hi. I'm Aki.
 
