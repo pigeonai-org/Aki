@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.jpg" alt="Aki" width="280" />
+  <img src="assets/logo.jpeg" alt="Aki" width="280" />
 </p>
 
 <h1 align="center">Aki</h1>
