@@ -207,6 +207,15 @@ class Settings(BaseSettings):
         default="openai:text-embedding-3-small", description="Default embedding model"
     )
 
+    # Sandbox / working directory
+    sandbox_dir: Optional[str] = Field(
+        default=None,
+        description=(
+            "Root directory for file tool access. Defaults to CWD if not set. "
+            "In Gateway/multi-user mode, set this to restrict file access."
+        ),
+    )
+
     # Custom endpoints
     openai_base_url: Optional[str] = Field(
         default=None, description="Custom OpenAI-compatible endpoint"

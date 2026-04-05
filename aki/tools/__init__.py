@@ -28,7 +28,14 @@ from aki.tools.read_skill import ReadSkillTool  # noqa: F401
 from aki.tools.skills_search import SkillsSearchTool  # noqa: F401
 from aki.tools.delegate_to_worker import DelegateToWorkerTool  # noqa: F401
 from aki.tools.memory import MemoryListTool, MemoryReadTool, MemoryWriteTool  # noqa: F401
-from aki.tools.personality import PersonalityListTool, PersonalitySelectTool  # noqa: F401
+from aki.tools.personality import PersonalityListTool, PersonalitySelectTool, PersonalityInfoTool  # noqa: F401
+from aki.tools.system import SystemRestartTool, ShellTool  # noqa: F401
+from aki.tools.io.web import TavilySearchTool, WebPageReadTool  # noqa: F401
+from aki.tools.io.pdf import PDFReadTool  # noqa: F401
+from aki.tools.agent.check_task import CheckAgentTaskTool  # noqa: F401
+from aki.tools.agent.send_message import SendAgentMessageTool  # noqa: F401
+from aki.tools.agent.read_shared import ReadSharedStateTool  # noqa: F401
+from aki.tools.agent.write_shared import WriteSharedStateTool  # noqa: F401
 
 __all__ = [
     "BaseTool",
@@ -66,4 +73,17 @@ __all__ = [
     # Personality tools
     "PersonalityListTool",
     "PersonalitySelectTool",
+    "PersonalityInfoTool",
+    # System tools
+    "SystemRestartTool",
+    "ShellTool",
+    # Web tools
+    "TavilySearchTool",
+    "WebPageReadTool",
+    "PDFReadTool",
+    # Agent communication tools
+    "CheckAgentTaskTool",
+    "SendAgentMessageTool",
+    "ReadSharedStateTool",
+    "WriteSharedStateTool",
 ]

@@ -1,8 +1,9 @@
 """Episodic memory dimension — what happened in past conversations.
 
 Timeline of session summaries stored as per-day YAML files.
+Isolated per personality — each persona has its own episodic history.
 
-Storage: .aki/memory/episodic/<user_id>/<YYYY-MM-DD>.yaml
+Storage: .aki/memory/episodic/<personality>/<user_id>/<YYYY-MM-DD>.yaml
 """
 from __future__ import annotations
 
@@ -54,16 +55,21 @@ def _atomic_yaml_write(path: Path, data: Any) -> None:
 
 
 class EpisodicMemoryStore(DimensionStore):
-    """Timeline of conversation episodes — session summaries, decisions, topics."""
+    """Timeline of conversation episodes — session summaries, decisions, topics.
+
+    Episodic memory is isolated per personality: Aki's conversations with a user
+    are separate from Aria's. Each persona builds its own history.
+    """
 
     dimension = "episodic"
 
-    def __init__(self, base_dir: Path | None = None):
+    def __init__(self, base_dir: Path | None = None, personality_name: str = "aki"):
         self._dir = base_dir or _STORAGE_DIR
+        self._personality = personality_name
 
     def _user_dir(self, user_id: str) -> Path:
         _validate_user_id(user_id)
-        return self._dir / user_id
+        return self._dir / self._personality / user_id
 
     def _today_path(self, user_id: str) -> Path:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

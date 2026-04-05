@@ -1,5 +1,5 @@
 """Personality tools — manage agent communication style and personality."""
 
-from aki.tools.personality.personality import PersonalityListTool, PersonalitySelectTool
+from aki.tools.personality.personality import PersonalityListTool, PersonalitySelectTool, PersonalityInfoTool
 
-__all__ = ["PersonalityListTool", "PersonalitySelectTool"]
+__all__ = ["PersonalityListTool", "PersonalitySelectTool", "PersonalityInfoTool"]

@@ -13,15 +13,27 @@ from aki.tools.base import BaseTool, ToolParameter, ToolResult
 from aki.tools.registry import ToolRegistry
 
 
+def _get_sandbox_root() -> Path:
+    """Return the configured sandbox directory, defaulting to CWD."""
+    try:
+        from aki.config.settings import get_settings
+        sandbox = get_settings().sandbox_dir
+        if sandbox:
+            return Path(sandbox).expanduser().resolve()
+    except Exception:
+        pass
+    return Path.cwd().resolve()
+
+
 def _validate_path(raw: str, *, allow_home: bool = False) -> Path:
     """Resolve path and ensure it doesn't escape the sandbox."""
     resolved = Path(raw).expanduser().resolve()
-    cwd = Path.cwd().resolve()
-    allowed_roots = [cwd]
+    sandbox = _get_sandbox_root()
+    allowed_roots = [sandbox]
     if allow_home:
         allowed_roots.append(Path.home().resolve())
     if not any(resolved == root or str(resolved).startswith(str(root) + os.sep) for root in allowed_roots):
-        raise ValueError(f"Path '{resolved}' is outside the allowed directory")
+        raise ValueError(f"Path '{resolved}' is outside the allowed directory ({sandbox})")
     return resolved
 
 

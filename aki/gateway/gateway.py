@@ -92,6 +92,11 @@ class Gateway:
 
         This method is passed as the ``on_message`` callback to adapters.
         """
+        # ── Gateway commands (intercepted before agent) ──
+        cmd_result = self._try_gateway_command(msg)
+        if cmd_result is not None:
+            return cmd_result
+
         session_id = await self._resolve_or_create_session(msg.platform_ctx)
 
         # Typing indicator fires *before* acquiring the lock so the user
@@ -106,14 +111,18 @@ class Gateway:
                 "ts": msg.timestamp.isoformat(),
                 "platform": msg.platform_ctx.platform,
                 "user_id": msg.platform_ctx.user_id,
+                "display_name": msg.platform_ctx.user_display_name or msg.platform_ctx.user_id,
                 "text": msg.text,
             })
 
             # Compact history if approaching context limit
             await self._maybe_compact(session_id)
 
-            # Delegate to SessionManager
-            result = await self._session_manager.send_message(session_id, msg.text)
+            # Delegate to SessionManager — prefix with username so agent
+            # can distinguish multiple users in the same channel
+            display_name = msg.platform_ctx.user_display_name or msg.platform_ctx.user_id
+            tagged_text = f"[{display_name}]: {msg.text}"
+            result = await self._session_manager.send_message(session_id, tagged_text)
             reply_text = result.get("reply", "")
 
             # Persist assistant reply
@@ -177,6 +186,126 @@ class Gateway:
         )
         logger.info("Created new session %s for %s:%s", state.session_id, ctx.platform, ctx.channel_id)
         return state.session_id
+
+    # ------------------------------------------------------------------
+    # Gateway commands
+    # ------------------------------------------------------------------
+
+    def _try_gateway_command(self, msg: InboundMessage) -> OutboundMessage | None:
+        """Intercept !commands before they reach the agent. Returns None if not a command."""
+        text = msg.text.strip()
+        if not text.startswith("!"):
+            return None
+
+        parts = text[1:].split(None, 1)
+        cmd = parts[0].lower() if parts else ""
+        arg = parts[1].strip() if len(parts) > 1 else ""
+
+        if cmd == "persona":
+            return self._cmd_persona(arg, msg)
+        if cmd == "model":
+            return self._cmd_model(arg, msg)
+        if cmd == "help":
+            return self._cmd_help(msg)
+
+        return None  # not a recognized command — pass through to agent
+
+    def _cmd_persona(self, arg: str, msg: InboundMessage) -> OutboundMessage:
+        """!persona [name] — list or switch persona."""
+        import json
+        from pathlib import Path
+
+        from aki.personality.registry import discover_personalities, load_personality
+
+        if not arg:
+            # List
+            personas = discover_personalities()
+            active = "aki"
+            state_file = Path(".aki/personality/active.json")
+            if state_file.exists():
+                try:
+                    active = json.loads(state_file.read_text(encoding="utf-8")).get("active", "aki")
+                except Exception:
+                    pass
+            lines = []
+            for p in personas:
+                marker = "●" if p.name == active else "○"
+                lines.append(f"{marker} **{p.name}** — {p.description}")
+            body = "\n".join(lines) if lines else "No personas found."
+            body += "\n\nUsage: `!persona <name>` to switch"
+            return OutboundMessage(
+                text=body, session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        # Switch
+        persona = load_personality(arg)
+        if persona is None:
+            available = [p.name for p in discover_personalities()]
+            return OutboundMessage(
+                text=f"Persona `{arg}` not found. Available: {', '.join(available)}",
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        state_dir = Path(".aki/personality")
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "active.json").write_text(
+            json.dumps({"active": persona.name}, ensure_ascii=False), encoding="utf-8",
+        )
+        return OutboundMessage(
+            text=f"Switched to **{persona.display_name}** ({persona.mbti})\n{persona.description}",
+            session_id="", platform_ctx=msg.platform_ctx,
+            in_reply_to=msg.message_id,
+        )
+
+    def _cmd_model(self, arg: str, msg: InboundMessage) -> OutboundMessage:
+        """!model [provider:name] — show or switch model."""
+        if not arg:
+            return OutboundMessage(
+                text=f"Current default: `{self._default_llm}`\nUsage: `!model provider:name`",
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        # Rebuild LLM and update all active sessions
+        from aki.api.session_manager import _build_llm
+        new_llm = _build_llm(arg)
+        if new_llm is None:
+            return OutboundMessage(
+                text=f"Failed to create model `{arg}`. Format: `provider:model`",
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        self._default_llm = arg
+        # Hot-swap on all active sessions
+        for sid, state in self._session_manager._sessions.items():
+            if state.agent:
+                state.agent.llm = new_llm
+            if state.orchestrator:
+                state.orchestrator.llm = new_llm
+
+        return OutboundMessage(
+            text=f"Model switched to `{arg}` for all sessions.",
+            session_id="", platform_ctx=msg.platform_ctx,
+            in_reply_to=msg.message_id,
+        )
+
+    def _cmd_help(self, msg: InboundMessage) -> OutboundMessage:
+        """!help — list available commands."""
+        return OutboundMessage(
+            text=(
+                "**Commands**\n"
+                "`!persona` — list available personas\n"
+                "`!persona <name>` — switch persona\n"
+                "`!model` — show current model\n"
+                "`!model <provider:name>` — switch model\n"
+                "`!help` — this message"
+            ),
+            session_id="", platform_ctx=msg.platform_ctx,
+            in_reply_to=msg.message_id,
+        )
 
     # ------------------------------------------------------------------
     # Helpers

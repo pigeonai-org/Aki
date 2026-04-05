@@ -584,7 +584,7 @@ class AkiMemorySystem:
 
         # Layer 2: Dimensions
         self.user_store = user_store or UserMemoryStore()
-        self.episodic_store = episodic_store or EpisodicMemoryStore()
+        self.episodic_store = episodic_store or EpisodicMemoryStore(personality_name=personality_name)
         self.semantic_store = semantic_store or SemanticMemoryStore()
         self.procedural_store = procedural_store or ProceduralMemoryStore()
         self.persona_bridge = persona_bridge or PersonaDimensionBridge(personality_name)

@@ -114,10 +114,9 @@ class SessionManager:
         state.last_active = datetime.now(timezone.utc)
 
         # Use provided history or the session's accumulated history (copy to avoid aliasing)
-        effective_history = list(history) if history is not None else state.conversation_history
-
-        # Append user message before sending so agent sees it in history
-        effective_history.append({"role": "user", "content": message})
+        # NOTE: Do NOT append user message here — _build_initial_messages already
+        # appends `task` as the final user message. Appending here would duplicate it.
+        effective_history = list(history) if history is not None else list(state.conversation_history)
 
         try:
             if state.agent is not None:
@@ -134,7 +133,8 @@ class SessionManager:
             logger.exception("Error processing message in session %s", session_id)
             reply = "I encountered an internal error. Please try again."
 
-        # Update session history
+        # Update session history with both user message and reply
+        effective_history.append({"role": "user", "content": message})
         effective_history.append({"role": "assistant", "content": reply})
         state.conversation_history = effective_history
 
@@ -154,15 +154,36 @@ class SessionManager:
         state: SessionState,
         history: list[dict[str, Any]],
     ) -> None:
-        """Run a hidden memory-review turn after the main agent reply.
+        """Run post-turn memory review.
 
-        The agent decides whether to call ``memory_write`` to persist new
-        information.  Review messages are NOT added to the session's visible
-        conversation history.
+        Uses the new AkiMemorySystem reviewer if available,
+        otherwise falls back to the legacy agent-driven review.
         """
+        # Try new system first
+        if state.agent and getattr(state.agent, "memory_system", None) is not None:
+            try:
+                memory_system = state.agent.memory_system
+                # Only review if enough messages accumulated
+                user_msgs = [m for m in history if m.get("role") == "user"]
+                if len(user_msgs) < 2:
+                    return
+
+                # Run the LLM-powered review pass
+                await memory_system.reviewer.review(
+                    session_id=memory_system._active_session_id or "",
+                    user_id=memory_system.user_id,
+                    messages=history,
+                    personality_name=memory_system.personality_name,
+                    llm=state.agent.llm,
+                )
+                return
+            except Exception:
+                import logging
+                logging.getLogger(__name__).debug("New review failed, falling back to legacy", exc_info=True)
+
+        # Legacy fallback: let agent call memory_write tool
         try:
             from aki.config.settings import get_settings
-
             if not get_settings().memory.memory_review_enabled:
                 return
         except Exception:
@@ -178,15 +199,13 @@ class SessionManager:
             "Otherwise just complete with no action."
         )
 
-        # Build a snapshot so review messages stay out of real history
         review_history = list(history)
         review_history.append({"role": "user", "content": review_prompt})
 
-        # Suppress UI callback and session recording during internal review
         saved_callback = getattr(state.agent, "_callback", None)
         saved_memory_system = getattr(state.agent, "memory_system", None)
         state.agent._callback = None
-        state.agent.memory_system = None  # prevent review messages from being recorded to session
+        state.agent.memory_system = None
         try:
             await state.agent.run_turn(
                 user_message=review_prompt,
@@ -197,7 +216,6 @@ class SessionManager:
         finally:
             state.agent._callback = saved_callback
             state.agent.memory_system = saved_memory_system
-        # review_history is discarded — state.conversation_history is unchanged
 
     def get_history(self, session_id: str) -> list[dict[str, Any]]:
         """Return conversation history for a session."""

@@ -6,6 +6,7 @@ Command-line interface for Aki operations.
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -809,6 +810,10 @@ def chat(
     # ── Welcome screen ──
     _print_welcome(llm_model_config, mcp)
 
+    # Check if this is a restart
+    if os.environ.pop("AKI_RESTARTED", None):
+        console.print("[green]Restarted successfully.[/green]\n")
+
     try:
         _preflight_llm_connectivity(llm_model_config, settings)
         asyncio.run(_chat_loop(llm_config_str, verbose, mcp_url=mcp or None))
@@ -1324,6 +1329,9 @@ def gateway(
             border_style="blue",
         )
     )
+
+    if os.environ.pop("AKI_RESTARTED", None):
+        console.print("[green]Restarted successfully.[/green]")
 
     try:
         from aki.gateway import launch_gateway

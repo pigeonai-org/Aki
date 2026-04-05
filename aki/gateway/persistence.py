@@ -153,7 +153,12 @@ class SessionPersistence:
                 history = [{"role": "system", "content": f"[Conversation summary]: {summary}"}]
 
             elif entry_type == "user":
-                history.append({"role": "user", "content": entry.get("text", "")})
+                text = entry.get("text", "")
+                # Include display name so agent can distinguish speakers
+                name = entry.get("display_name") or entry.get("user_id", "")
+                if name and not text.startswith("["):
+                    text = f"[{name}]: {text}"
+                history.append({"role": "user", "content": text})
 
             elif entry_type == "assistant":
                 history.append({"role": "assistant", "content": entry.get("text", "")})

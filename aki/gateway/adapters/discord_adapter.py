@@ -60,6 +60,11 @@ class DiscordAdapter(PlatformAdapter):
         async def on_ready() -> None:
             logger.info("Discord connected as %s", client.user)
 
+            # If this is a restart, notify active channels
+            import os
+            if os.environ.pop("AKI_RESTARTED", None):
+                await self._notify_restart(client)
+
         @client.event
         async def on_message(message: discord.Message) -> None:
             # Ignore own messages and bots
@@ -126,3 +131,25 @@ class DiscordAdapter(PlatformAdapter):
         while text:
             chunk, text = text[:_DISCORD_MAX_LEN], text[_DISCORD_MAX_LEN:]
             await channel.send(chunk)
+
+    async def _notify_restart(self, client: Any) -> None:
+        """Send a restart notification to all known channels."""
+        # Collect channel IDs from allowed list or all guilds
+        channel_ids: set[str] = set()
+        if self._allowed_channels:
+            channel_ids = set(self._allowed_channels)
+        else:
+            # Notify all text channels in all guilds (risky in big servers, so limit to allowed)
+            # If no allowlist, skip — we don't want to spam every channel
+            logger.info("No channel allowlist — skipping restart notification")
+            return
+
+        for cid in channel_ids:
+            try:
+                channel = client.get_channel(int(cid))
+                if channel is None:
+                    channel = await client.fetch_channel(int(cid))
+                if channel is not None:
+                    await channel.send("Restarted successfully.")
+            except Exception as e:
+                logger.warning("Failed to notify channel %s: %s", cid, e)
