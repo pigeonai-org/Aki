@@ -170,8 +170,8 @@ class GatewaySettings(BaseSettings):
         description="Directory for JSONL session persistence",
     )
     compaction_max_tokens: int = Field(
-        default=8000,
-        description="Max estimated context tokens before compaction triggers",
+        default=128_000,
+        description="Max estimated context tokens before compaction triggers (aligned with model context window)",
     )
     compaction_threshold: float = Field(
         default=0.80,

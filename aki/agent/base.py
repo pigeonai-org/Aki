@@ -195,8 +195,16 @@ class UniversalAgent:
                     msg_tokens = self._context_manager.estimate_tokens(messages)  # type: ignore[union-attr]
                     budget.update_message_tokens(msg_tokens)
                     if not budget.has_capacity():
-                        logger.dedent()
-                        return "Token budget exhausted."
+                        # Attempt compaction before giving up
+                        if self._context_manager is not None and self._context_manager.needs_compaction(messages, budget):
+                            await self._fire_hook(EventType.CONTEXT_COMPACTION, reason="budget_exhausted_recovery")
+                            messages = await self._context_manager.compact(messages, self.llm, budget)
+                            # Re-check after compaction
+                            msg_tokens = self._context_manager.estimate_tokens(messages)
+                            budget.update_message_tokens(msg_tokens)
+                        if not budget.has_capacity():
+                            logger.dedent()
+                            return "Token budget exhausted."
 
                 # --- Callback: thinking ---
                 if self._callback is not None:
