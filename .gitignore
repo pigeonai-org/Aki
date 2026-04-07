@@ -1,8 +1,5 @@
-# Aki user data
-.aki/long-term-memory/
-.aki/sessions/
-.aki/memory/
-.aki/persona_memory/
+# Aki runtime data (all of .aki/)
+.aki/
 
 # Python
 __pycache__/
