@@ -101,6 +101,7 @@ class SessionManager:
         session_id: str,
         message: str,
         history: list[dict[str, Any]] | None = None,
+        image_urls: list[str] | None = None,
     ) -> dict[str, Any]:
         """Send a message to an existing session and get a response.
 
@@ -123,6 +124,7 @@ class SessionManager:
                 reply = await state.agent.run_turn(
                     user_message=message,
                     conversation_history=effective_history,
+                    image_urls=image_urls,
                 )
             else:
                 # Fallback: no persistent agent (shouldn't happen)

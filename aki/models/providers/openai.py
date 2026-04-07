@@ -19,6 +19,36 @@ from aki.models.types.embedding import EmbeddingModelInterface
 from aki.models.types.llm import LLMInterface
 from aki.models.types.vlm import VLMInterface
 
+
+def _convert_image_blocks(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Anthropic-style image content blocks to OpenAI format.
+
+    Anthropic: {"type": "image", "source": {"type": "url", "url": "..."}}
+    OpenAI:    {"type": "image_url", "image_url": {"url": "..."}}
+
+    Passes through messages without image blocks unchanged.
+    """
+    result = []
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            result.append(msg)
+            continue
+        # Convert content blocks
+        converted_blocks = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "image":
+                source = block.get("source", {})
+                url = source.get("url", "")
+                converted_blocks.append({
+                    "type": "image_url",
+                    "image_url": {"url": url},
+                })
+            else:
+                converted_blocks.append(block)
+        result.append({**msg, "content": converted_blocks})
+    return result
+
 logger = logging.getLogger(__name__)
 
 # Models that support OpenAI's web_search_preview tool
@@ -63,9 +93,12 @@ class OpenAILLM(LLMInterface):
         """Chat completion using OpenAI API with optional native web search."""
         client = self._get_client()
 
+        # Convert image content blocks from Anthropic format to OpenAI format
+        converted_messages = _convert_image_blocks(messages)
+
         request_params: dict[str, Any] = {
             "model": self.config.model_name,
-            "messages": messages,
+            "messages": converted_messages,
             "temperature": temperature,
         }
 

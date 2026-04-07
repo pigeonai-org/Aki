@@ -23,6 +23,7 @@ from aki.api.session_manager import SessionManager
 from aki.gateway.adapters.base import PlatformAdapter
 from aki.gateway.compaction import ContextCompactor
 from aki.gateway.lane_queue import LaneQueue
+from aki.gateway.permissions import get_permission_manager
 from aki.gateway.persistence import SessionPersistence
 from aki.gateway.types import InboundMessage, OutboundMessage, PlatformContext
 
@@ -92,6 +93,16 @@ class Gateway:
 
         This method is passed as the ``on_message`` callback to adapters.
         """
+        # ── Permission check ──
+        perms = get_permission_manager()
+        user_id = msg.platform_ctx.user_id
+        if perms.is_blocked(user_id):
+            logger.info("Blocked user %s — ignoring message", user_id)
+            return OutboundMessage(
+                text="", session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
         # ── Gateway commands (intercepted before agent) ──
         cmd_result = self._try_gateway_command(msg)
         if cmd_result is not None:
@@ -118,11 +129,26 @@ class Gateway:
             # Compact history if approaching context limit
             await self._maybe_compact(session_id)
 
+            # Per-user tool filtering: temporarily hide tools this user can't access
+            blocked_tools = perms.get_blocked_tools(user_id)
+            state = self._session_manager.get_session(session_id)
+            removed_tools: list[Any] = []
+            if blocked_tools and state and state.agent:
+                original_tools = state.agent.tools
+                removed_tools = [t for t in original_tools if t.name in blocked_tools]
+                state.agent.tools = [t for t in original_tools if t.name not in blocked_tools]
+
             # Delegate to SessionManager — prefix with username so agent
             # can distinguish multiple users in the same channel
             display_name = msg.platform_ctx.user_display_name or msg.platform_ctx.user_id
             tagged_text = f"[{display_name}]: {msg.text}"
-            result = await self._session_manager.send_message(session_id, tagged_text)
+            result = await self._session_manager.send_message(
+                session_id, tagged_text, image_urls=msg.image_urls or None,
+            )
+
+            # Restore tools after the turn
+            if removed_tools and state and state.agent:
+                state.agent.tools = original_tools
             reply_text = result.get("reply", "")
 
             # Persist assistant reply
@@ -205,6 +231,8 @@ class Gateway:
             return self._cmd_persona(arg, msg)
         if cmd == "model":
             return self._cmd_model(arg, msg)
+        if cmd == "perm":
+            return self._cmd_perm(arg, msg)
         if cmd == "help":
             return self._cmd_help(msg)
 
@@ -292,6 +320,63 @@ class Gateway:
             in_reply_to=msg.message_id,
         )
 
+    def _cmd_perm(self, arg: str, msg: InboundMessage) -> OutboundMessage:
+        """!perm [user_id group] — view or manage permissions. Owner only."""
+        perms = get_permission_manager()
+        caller = msg.platform_ctx.user_id
+
+        if not arg:
+            # Show own group + list all if owner
+            own_group = perms.get_group(caller)
+            lines = [f"Your group: **{own_group}**"]
+            if perms.is_owner(caller):
+                users = perms.list_users()
+                if users:
+                    lines.append("\n**All users:**")
+                    for uid, group in users.items():
+                        lines.append(f"  `{uid}` → {group}")
+                lines.append("\nUsage: `!perm <@user or user_id> <owner|user|blocked>`")
+            return OutboundMessage(
+                text="\n".join(lines),
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        # Setting permissions — owner only
+        if not perms.is_owner(caller):
+            return OutboundMessage(
+                text="Only owners can manage permissions.",
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        parts = arg.split()
+        if len(parts) < 2:
+            return OutboundMessage(
+                text="Usage: `!perm <user_id> <owner|user|blocked>`",
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        # Extract user ID — handle Discord mention format <@123456>
+        target_raw = parts[0]
+        target_id = target_raw.strip("<@!>")
+        group = parts[1].lower()
+
+        if group not in ("owner", "user", "blocked"):
+            return OutboundMessage(
+                text=f"Invalid group `{group}`. Must be: `owner`, `user`, or `blocked`.",
+                session_id="", platform_ctx=msg.platform_ctx,
+                in_reply_to=msg.message_id,
+            )
+
+        perms.set_group(target_id, group)
+        return OutboundMessage(
+            text=f"Set `{target_id}` → **{group}**",
+            session_id="", platform_ctx=msg.platform_ctx,
+            in_reply_to=msg.message_id,
+        )
+
     def _cmd_help(self, msg: InboundMessage) -> OutboundMessage:
         """!help — list available commands."""
         return OutboundMessage(
@@ -301,6 +386,8 @@ class Gateway:
                 "`!persona <name>` — switch persona\n"
                 "`!model` — show current model\n"
                 "`!model <provider:name>` — switch model\n"
+                "`!perm` — view permissions\n"
+                "`!perm <user_id> <owner|user|blocked>` — set permissions (owner only)\n"
                 "`!help` — this message"
             ),
             session_id="", platform_ctx=msg.platform_ctx,

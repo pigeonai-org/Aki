@@ -128,17 +128,21 @@ class UniversalAgent:
 
         # Conversation history for multi-turn sessions (empty = single-shot mode)
         self._conversation_history: list[dict[str, Any]] = []
+        self._pending_image_urls: list[str] = []
         self._turn_count: int = 0
 
     async def run_turn(
         self,
         user_message: str,
         conversation_history: list[dict[str, Any]],
+        image_urls: list[str] | None = None,
     ) -> str:
         """Process one user turn within an ongoing conversation."""
         self._conversation_history = conversation_history
+        self._pending_image_urls = image_urls or []
         self._turn_count += 1
         result = await self.run(user_message)
+        self._pending_image_urls = []
         return str(result) if result else "I'm not sure how to respond to that."
 
     async def _fire_hook(self, event_type: EventType, **data: Any) -> None:
@@ -607,5 +611,22 @@ class UniversalAgent:
                     safe_role = "user"  # remap injected system messages
                 content = msg.get("content", "")
                 messages.append({"role": safe_role, "content": content})
-        messages.append({"role": "user", "content": task})
+
+        # Build the current user message — with image content blocks if present
+        image_urls = getattr(self, "_pending_image_urls", [])
+        if image_urls:
+            # Multimodal message: text + images as content blocks
+            # Works with both Anthropic and OpenAI formats
+            content_blocks: list[dict[str, Any]] = []
+            if task:
+                content_blocks.append({"type": "text", "text": task})
+            for url in image_urls:
+                content_blocks.append({
+                    "type": "image",
+                    "source": {"type": "url", "url": url},
+                })
+            messages.append({"role": "user", "content": content_blocks})
+        else:
+            messages.append({"role": "user", "content": task})
+
         return messages

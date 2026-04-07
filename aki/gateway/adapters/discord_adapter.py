@@ -77,8 +77,17 @@ class DiscordAdapter(PlatformAdapter):
             if self._allowed_channels and str(message.channel.id) not in self._allowed_channels:
                 return
 
-            # Skip empty messages (e.g. image-only)
-            if not message.content.strip():
+            # Extract image URLs from attachments and embeds
+            image_urls: list[str] = []
+            _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+            for att in message.attachments:
+                if att.content_type and att.content_type.startswith("image/"):
+                    image_urls.append(att.url)
+                elif any(att.filename.lower().endswith(ext) for ext in _IMAGE_EXTS):
+                    image_urls.append(att.url)
+
+            # Skip if no text AND no images
+            if not message.content.strip() and not image_urls:
                 return
 
             ctx = PlatformContext(
@@ -89,7 +98,8 @@ class DiscordAdapter(PlatformAdapter):
                 raw_event=message,
             )
             inbound = InboundMessage(
-                text=message.content,
+                text=message.content or "(image)",
+                image_urls=image_urls,
                 platform_ctx=ctx,
                 timestamp=message.created_at,
             )
@@ -123,6 +133,8 @@ class DiscordAdapter(PlatformAdapter):
                 pass
 
     async def send_reply(self, msg: OutboundMessage) -> None:
+        if not msg.text:
+            return  # empty reply (e.g. blocked user) — don't send
         if msg.platform_ctx.raw_event is None:
             return
         channel = msg.platform_ctx.raw_event.channel

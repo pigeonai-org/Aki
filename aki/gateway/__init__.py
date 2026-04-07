@@ -24,6 +24,7 @@ async def launch_gateway(
     port: int = 8080,
     discord_token: Optional[str] = None,
     discord_channels: Optional[list[str]] = None,
+    disabled_tools: Optional[list[str]] = None,
 ) -> None:
     """Start the unified gateway process: FastAPI + platform adapters.
 
@@ -74,6 +75,15 @@ async def launch_gateway(
         compactor=compactor,
         default_llm=gw_settings.default_llm,
     )
+
+    # Disable tools if requested
+    if disabled_tools:
+        from aki.tools.registry import ToolRegistry
+        for tool_name in disabled_tools:
+            if ToolRegistry.unregister(tool_name):
+                logger.info("Disabled tool: %s", tool_name)
+            else:
+                logger.warning("Tool not found to disable: %s", tool_name)
 
     # Register platform adapters
     if token:

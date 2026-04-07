@@ -1312,23 +1312,26 @@ def gateway(
     discord_channels: str = typer.Option("", "--discord-channels", envvar="AKI_GATEWAY_DISCORD_CHANNEL_IDS", help="Comma-separated allowed channel IDs"),
     host: str = typer.Option("0.0.0.0", "--host", help="REST API bind host"),
     port: int = typer.Option(8080, "--port", help="REST API bind port"),
+    disable_tools: str = typer.Option(
+        "", "--disable-tools", envvar="AKI_DISABLE_TOOLS",
+        help="Comma-separated tool names to disable (e.g. shell,system_restart)",
+    ),
 ) -> None:
     """Start the gateway (Discord bot + REST API in one process)."""
     channels = [c.strip() for c in discord_channels.split(",") if c.strip()] or None
+    disabled = [t.strip() for t in disable_tools.split(",") if t.strip()] or None
 
     # Check both CLI arg and settings for Discord token
     settings = get_settings()
     has_discord = bool(discord_token or settings.gateway.discord_token)
 
-    console.print(
-        Panel(
-            f"[bold]Host:[/bold] {host}:{port}\n"
-            + ("[bold]Discord:[/bold] enabled\n" if has_discord else "[dim]Discord: not configured[/dim]\n")
-            + "[dim]Press Ctrl+C to stop.[/dim]",
-            title="Aki Gateway",
-            border_style="blue",
-        )
-    )
+    info_lines = [f"[bold]Host:[/bold] {host}:{port}"]
+    info_lines.append("[bold]Discord:[/bold] enabled" if has_discord else "[dim]Discord: not configured[/dim]")
+    if disabled:
+        info_lines.append(f"[bold]Disabled tools:[/bold] {', '.join(disabled)}")
+    info_lines.append("[dim]Press Ctrl+C to stop.[/dim]")
+
+    console.print(Panel("\n".join(info_lines), title="Aki Gateway", border_style="blue"))
 
     if os.environ.pop("AKI_RESTARTED", None):
         console.print("[green]Restarted successfully.[/green]")
@@ -1341,6 +1344,7 @@ def gateway(
             port=port,
             discord_token=discord_token or None,
             discord_channels=channels,
+            disabled_tools=disabled,
         ))
     except KeyboardInterrupt:
         console.print("\n[dim]Gateway stopped.[/dim]")

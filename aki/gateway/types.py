@@ -27,6 +27,7 @@ class InboundMessage:
     platform_ctx: PlatformContext
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     message_id: str = field(default_factory=lambda: str(uuid4()))
+    image_urls: list[str] = field(default_factory=list)  # URLs of attached images
 
 
 @dataclass

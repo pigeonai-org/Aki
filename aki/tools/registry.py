@@ -119,6 +119,14 @@ class ToolRegistry:
         return name in cls._tools
 
     @classmethod
+    def unregister(cls, name: str) -> bool:
+        """Remove a tool from the registry. Returns True if it was found."""
+        found = name in cls._tools
+        cls._tools.pop(name, None)
+        cls._instances.pop(name, None)
+        return found
+
+    @classmethod
     def clear(cls) -> None:
         """Clear all registrations and instances (useful for testing)."""
         cls._tools.clear()
