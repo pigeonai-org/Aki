@@ -30,6 +30,7 @@ from aki.tools.delegate_to_worker import DelegateToWorkerTool  # noqa: F401
 from aki.tools.memory import MemoryListTool, MemoryReadTool, MemoryWriteTool  # noqa: F401
 from aki.tools.personality import PersonalityListTool, PersonalitySelectTool, PersonalityInfoTool  # noqa: F401
 from aki.tools.system import SystemRestartTool, ShellTool  # noqa: F401
+from aki.tools.opencli import OpenCLITool  # noqa: F401
 from aki.tools.io.web import TavilySearchTool, WebPageReadTool  # noqa: F401
 from aki.tools.io.pdf import PDFReadTool  # noqa: F401
 from aki.tools.agent.check_task import CheckAgentTaskTool  # noqa: F401
@@ -77,6 +78,8 @@ __all__ = [
     # System tools
     "SystemRestartTool",
     "ShellTool",
+    # OpenCLI tools
+    "OpenCLITool",
     # Web tools
     "TavilySearchTool",
     "WebPageReadTool",
